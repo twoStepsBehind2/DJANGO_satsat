@@ -8,4 +8,5 @@ class UserAdmin(admin.ModelAdmin):
     list_filter = ('position',)  # Filter by position in the sidebar
     ordering = ('name',)  # Default ordering by name
     
+    
 admin.site.register(RegisAcc,    UserAdmin)
