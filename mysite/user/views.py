@@ -6,3 +6,6 @@ def index(request):
 
 def dashboard(request):
     return render(request, 'users/dashboard.html')
+
+def userlist(request):
+    return render(request, 'users/userlist.html')
