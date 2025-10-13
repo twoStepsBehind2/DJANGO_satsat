@@ -161,10 +161,12 @@
                         <label>Password (leave blank to keep)</label>
                         <input type="password" name="password" class="form-control">
                       </div>
-                      <div class="mb-3">
-                        <label>Position</label>
-                        <input type="text" name="position" class="form-control" value="{{ user.position }}" required>
-                      </div>
+                       <div class="mb-3">
+                        <label class="form-label">Position</label>
+                        <select name="position" class="form-control" required>
+                          <option value="Admin" {% if user.position == "Admin" %}selected{% endif %}>Admin</option>
+                          <option value="Cashier" {% if user.position == "Cashier" %}selected{% endif %}>Cashier</option>
+                        </select>
                       <div class="mb-3">
                         <label>Profile Image</label>
                         <input type="file" name="user_image" class="form-control">
@@ -213,10 +215,12 @@
             <label>Password</label>
             <input type="password" name="password" class="form-control" required>
           </div>
-          <div class="mb-3">
-            <label>Position</label>
-            <input type="text" name="position" class="form-control" required>
-          </div>
+               <label class="form-label">Position</label>
+            <select name="position" class="form-control" required>
+              <option value="" disabled selected>Choose position</option>
+              <option value="Admin">Admin</option>
+              <option value="Cashier">Cashier</option>
+            </select>
           <div class="mb-3">
             <label>Profile Image</label>
             <input type="file" name="user_image" class="form-control">
