@@ -123,67 +123,7 @@
 
       <div class="row mt-4">
   <!-- Registered Users (RegisAcc) -->
-  <div class="col-lg-12">
-    <div class="card h-100">
-      <div class="card-header pb-0">
-        <h6 class="text-capitalize">Registered Users</h6>
-        <p class="text-sm mb-0">
-          <i class="fa fa-users text-primary"></i>
-          <span class="font-weight-bold">{{ users|length }}</span> total users
-        </p>
-      </div>
-       <!-- Registered Users (RegisAcc) -->
-  <div class="card-body p-3">
-  <div class="table-responsive">
-    <table class="table align-items-center mb-0">
-      <thead>
-        <tr>
-          <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">Profile</th>
-          <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">Name</th>
-          <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">Username</th>
-          <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">Position</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for user in users %}
-        <tr>
-          <!-- Profile Image -->
-          <td>
-            <div class="d-flex px-2 py-1">
-              <div>
-                <img src="{{ user.user_image.url }}" class="avatar avatar-sm me-3" alt="{{ user.name }}">
-              </div>
-            </div>
-          </td>
 
-          <!-- Name -->
-          <td>
-            <h6 class="mb-0 text-sm">{{ user.name }}</h6>
-          </td>
-
-          <!-- Username -->
-          <td>
-            <p class="text-xs text-secondary mb-0">{{ user.username }}</p>
-          </td>
-
-          <!-- Position -->
-          <td>
-            <p class="text-xs font-weight-bold mb-0">{{ user.position }}</p>
-          </td>
-        </tr>
-        {% empty %}
-        <tr>
-          <td colspan="4" class="text-center text-muted py-3">No users found.</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-
-    </div>
-  </div>
 </div>
 
       
