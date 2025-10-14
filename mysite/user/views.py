@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from .models import RegisAcc
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth import logout as django_logout
 from .models import RegisAcc, Products
@@ -14,13 +15,8 @@ from .models import Products
 # LOGOUT
 # -------------------------------
 def logout(request):
+    # Clear all session data
     django_logout(request)
-    messages.success(request, "You have been logged out successfully.")
-    return redirect('index')
-
-
-def logout_user(request):
-    request.session.flush()
     messages.success(request, "You have been logged out successfully.")
     return redirect('index')
 
@@ -29,8 +25,9 @@ def logout_user(request):
 # LOGIN VIEW (Index Page)
 # -------------------------------
 def index(request):
+    # ✅ CLEAR ANY OLD MESSAGES (like "Welcome, username")
     storage = messages.get_messages(request)
-    storage.used = True  # Clear any old messages
+    storage.used = True   # Clears messages completely
 
     if request.method == 'POST':
         username = request.POST.get('username')
@@ -47,12 +44,18 @@ def index(request):
     return render(request, 'users/index.html')
 
 
-# -------------------------------
+def logout_user(request):
+    request.session.flush()
+    messages.success(request, "You have been logged out successfully.")
+    return redirect('index')
+
+
 # DASHBOARD
 # -------------------------------
-def dashboard(request):
-    return render(request, 'users/dashboard.html')
 
+def dashboard(request):
+    # ❌ Remove messages.success(...). Keep the greeting inside the template only.
+    return render(request, 'users/dashboard.html')
 
 # -------------------------------
 # USER LIST
@@ -78,7 +81,6 @@ def userlist(request):
 
     users = RegisAcc.objects.all()
     return render(request, 'users/userlist.html', {'users': users})
-
 
 # -------------------------------
 # EDIT USER
@@ -111,9 +113,8 @@ def delete_user(request, user_id):
         return redirect('userlist')
     return redirect('userlist')
 
-
 # -------------------------------
-# SIGNUP VIEW
+# SIGNUP VIEW (Register New Account)
 # -------------------------------
 def signup(request):
     if request.method == 'POST':
@@ -123,6 +124,7 @@ def signup(request):
         position = request.POST.get('position', '').strip()
         user_image = request.FILES.get('user_image')
 
+        # Basic validation
         if not name or not username or not password or not position:
             messages.error(request, "All fields are required.")
             return redirect('signup')
@@ -139,6 +141,7 @@ def signup(request):
             messages.error(request, "Username already exists. Choose another.")
             return redirect('signup')
 
+        # Hash the password before saving
         hashed_password = make_password(password)
 
         new_user = RegisAcc(
@@ -152,12 +155,11 @@ def signup(request):
         messages.success(request, "Account created successfully! Please log in.")
         return redirect('index')
 
+    # GET: show sign up form
     return render(request, 'users/signup.html')
 
 
-# -------------------------------
-# PRODUCTS
-# -------------------------------
+
 def products(request):
     products = Products.objects.all()
     return render(request, 'users/products.html', {'products': products})
