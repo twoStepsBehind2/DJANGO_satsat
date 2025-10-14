@@ -9,6 +9,7 @@ from .models import Products, Sale, SaleItem
 from django.db import transaction
 from django.utils import timezone
 from decimal import Decimal
+from .models import Sale, SaleItem
 
 
 
@@ -36,7 +37,7 @@ def logout_user(request):
 # -------------------------------
 def index(request):
     storage = messages.get_messages(request)
-    storage.used = True  # Clear any old messages
+    storage.used = True  # clear old messages
 
     if request.method == 'POST':
         username = request.POST.get('username')
@@ -46,12 +47,21 @@ def index(request):
             user = RegisAcc.objects.get(username=username, password=password)
             request.session['user_id'] = user.id
             request.session['user_name'] = user.name
-            return redirect('dashboard')
+            request.session['user_position'] = user.position  # 🆕 store user role
+
+            # 👮 Role-based redirection
+            if user.position == 'Admin':
+                return redirect('dashboard')
+            elif user.position == 'Cashier':
+                return redirect('cashier')
+            else:
+                messages.error(request, 'Unauthorized role.')
+                return redirect('index')
+
         except RegisAcc.DoesNotExist:
             messages.error(request, 'Invalid username or password!')
 
     return render(request, 'users/index.html')
-
 
 # -------------------------------
 # DASHBOARD
@@ -363,3 +373,24 @@ def dashboard(request):
         'total_sales_amount': total_sales_amount,
     }
     return render(request, 'users/dashboard.html', context)
+
+def total_sales_view(request):
+    # 🧾 All sales ordered by latest date
+    sales = Sale.objects.all().order_by('-sale_date')
+
+    # 💰 Total sales revenue
+    total_sales_amount = sales.aggregate(Sum('total_price'))['total_price__sum'] or 0
+
+    # 🛍 Total number of products sold
+    total_products_sold = SaleItem.objects.aggregate(Sum('quantity'))['quantity__sum'] or 0
+
+    # 🧮 Total number of transactions
+    total_transactions = sales.count()
+
+    context = {
+        'sales': sales,
+        'total_sales_amount': total_sales_amount,
+        'total_products_sold': total_products_sold,
+        'total_transactions': total_transactions,
+    }
+    return render(request, 'users/totalsales.html', context)

@@ -1,4 +1,5 @@
 {% load static %}
+{% load humanize %}
 {% include "partials/header.html" %}
 
 <body class="g-sidenav-show bg-gray-100">
@@ -46,7 +47,7 @@
             <div class="card-body d-flex justify-content-between align-items-center">
               <div>
                 <p class="text-sm mb-0 text-uppercase font-weight-bold">Users</p>
-                <h5 class="font-weight-bolder mb-0">{{ total_users }}</h5>
+                <h5 class="font-weight-bolder mb-0">{{ total_users|intcomma  }}</h5>
               </div>
               <div class="icon icon-shape bg-gradient-primary shadow text-center rounded-circle dashboard-icon">
                 <i class="fa fa-user text-white"></i>
@@ -61,7 +62,7 @@
             <div class="card-body d-flex justify-content-between align-items-center">
               <div>
                 <p class="text-sm mb-0 text-uppercase font-weight-bold">Products</p>
-                <h5 class="font-weight-bolder mb-0">{{ total_products }}</h5>
+                <h5 class="font-weight-bolder mb-0">{{ total_products|intcomma  }}</h5>
               </div>
               <div class="icon icon-shape bg-gradient-success shadow text-center rounded-circle dashboard-icon">
                 <i class="fa fa-box text-white"></i>
@@ -76,7 +77,7 @@
             <div class="card-body d-flex justify-content-between align-items-center">
               <div>
                 <p class="text-sm mb-0 text-uppercase font-weight-bold">Total Stock</p>
-                <h5 class="font-weight-bolder mb-0">{{ total_stock }}</h5>
+                <h5 class="font-weight-bolder mb-0">{{ total_stock|intcomma  }}</h5>
               </div>
               <div class="icon icon-shape bg-gradient-warning shadow text-center rounded-circle dashboard-icon">
                 <i class="fa fa-warehouse text-white"></i>
@@ -91,7 +92,7 @@
             <div class="card-body d-flex justify-content-between align-items-center">
               <div>
                 <p class="text-sm mb-0 text-uppercase font-weight-bold">Transactions</p>
-                <h5 class="font-weight-bolder mb-0">{{ total_sales_count }}</h5>
+                <h5 class="font-weight-bolder mb-0">{{ total_sales_count|intcomma  }}</h5>
               </div>
               <div class="icon icon-shape bg-gradient-info shadow text-center rounded-circle dashboard-icon">
                 <i class="fa fa-shopping-cart text-white"></i>
@@ -106,7 +107,7 @@
             <div class="card-body d-flex justify-content-between align-items-center">
               <div>
                 <p class="text-sm mb-0 text-uppercase font-weight-bold">Total Sales</p>
-                <h5 class="font-weight-bolder mb-0">₱{{ total_sales_amount|floatformat:2 }}</h5>
+                <h5 class="font-weight-bolder mb-0">₱{{ total_sales_amount|floatformat:2|intcomma  }}</h5>
               </div>
               <div class="icon icon-shape bg-gradient-danger shadow text-center rounded-circle dashboard-icon">
                 <i class="fa fa-money-bill-wave text-white"></i>
