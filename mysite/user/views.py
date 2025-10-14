@@ -1,22 +1,24 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from .models import RegisAcc
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth import logout as django_logout
-from .models import RegisAcc, Products
+from .models import RegisAcc, Products, Sale, SaleItem
 from django.db.models import Sum
-from .models import Products
-
-
-
-
+from decimal import Decimal
+from datetime import datetime
+from django.db import transaction
 
 # -------------------------------
 # LOGOUT
 # -------------------------------
 def logout(request):
-    # Clear all session data
     django_logout(request)
+    messages.success(request, "You have been logged out successfully.")
+    return redirect('index')
+
+
+def logout_user(request):
+    request.session.flush()
     messages.success(request, "You have been logged out successfully.")
     return redirect('index')
 
@@ -25,9 +27,8 @@ def logout(request):
 # LOGIN VIEW (Index Page)
 # -------------------------------
 def index(request):
-    # ✅ CLEAR ANY OLD MESSAGES (like "Welcome, username")
     storage = messages.get_messages(request)
-    storage.used = True   # Clears messages completely
+    storage.used = True  # Clear any old messages
 
     if request.method == 'POST':
         username = request.POST.get('username')
@@ -44,198 +45,106 @@ def index(request):
     return render(request, 'users/index.html')
 
 
-def logout_user(request):
-    request.session.flush()
-    messages.success(request, "You have been logged out successfully.")
-    return redirect('index')
-
-
+# -------------------------------
 # DASHBOARD
 # -------------------------------
-
 def dashboard(request):
-    # ❌ Remove messages.success(...). Keep the greeting inside the template only.
     return render(request, 'users/dashboard.html')
 
-# -------------------------------
-# USER LIST
-# -------------------------------
-def userlist(request):
-    if request.method == 'POST':
-        name = request.POST.get('name')
-        username = request.POST.get('username')
-        password = request.POST.get('password')
-        position = request.POST.get('position')
-        user_image = request.FILES.get('user_image')
-
-        new_user = RegisAcc(
-            name=name,
-            username=username,
-            password=password,
-            position=position,
-            user_image=user_image if user_image else 'profile/image.png'
-        )
-        new_user.save()
-        messages.success(request, f'User "{name}" added successfully!')
-        return redirect('userlist')
-
-    users = RegisAcc.objects.all()
-    return render(request, 'users/userlist.html', {'users': users})
 
 # -------------------------------
-# EDIT USER
+# PRODUCTS
 # -------------------------------
-def edit_user(request, user_id):
-    user = get_object_or_404(RegisAcc, id=user_id)
-    if request.method == 'POST':
-        user.name = request.POST.get('name')
-        user.username = request.POST.get('username')
-        password = request.POST.get('password')
-        if password:
-            user.password = password
-        user.position = request.POST.get('position')
-        if 'user_image' in request.FILES:
-            user.user_image = request.FILES['user_image']
-        user.save()
-        messages.success(request, f"User '{user.username}' updated successfully!")
-        return redirect('userlist')
-    return redirect('userlist')
-
-
-# -------------------------------
-# DELETE USER
-# -------------------------------
-def delete_user(request, user_id):
-    user = get_object_or_404(RegisAcc, id=user_id)
-    if request.method == 'POST':
-        user.delete()
-        messages.success(request, f"User '{user.username}' deleted successfully!")
-        return redirect('userlist')
-    return redirect('userlist')
-
-# -------------------------------
-# SIGNUP VIEW (Register New Account)
-# -------------------------------
-def signup(request):
-    if request.method == 'POST':
-        name = request.POST.get('name', '').strip()
-        username = request.POST.get('username', '').strip()
-        password = request.POST.get('password', '')
-        position = request.POST.get('position', '').strip()
-        user_image = request.FILES.get('user_image')
-
-        # Basic validation
-        if not name or not username or not password or not position:
-            messages.error(request, "All fields are required.")
-            return redirect('signup')
-
-        if len(password) < 6:
-            messages.error(request, "Password must be at least 6 characters.")
-            return redirect('signup')
-
-        if position not in ['Admin', 'Cashier']:
-            messages.error(request, "Invalid position selected.")
-            return redirect('signup')
-
-        if RegisAcc.objects.filter(username=username).exists():
-            messages.error(request, "Username already exists. Choose another.")
-            return redirect('signup')
-
-        # Hash the password before saving
-        hashed_password = make_password(password)
-
-        new_user = RegisAcc(
-            name=name,
-            username=username,
-            password=hashed_password,
-            position=position,
-            user_image=user_image if user_image else 'profile/image.png'
-        )
-        new_user.save()
-        messages.success(request, "Account created successfully! Please log in.")
-        return redirect('index')
-
-    # GET: show sign up form
-    return render(request, 'users/signup.html')
-
-
-
 def products(request):
     products = Products.objects.all()
     return render(request, 'users/products.html', {'products': products})
 
 
 # -------------------------------
-# ADD PRODUCT
+# CASHIER (main)
 # -------------------------------
-def add_product(request):
-    if request.method == 'POST':
-        brand = request.POST.get('brand')
-        model = request.POST.get('model')
-        product_condition = request.POST.get('product_condition')
-        quantity = request.POST.get('quantity')
-        price = request.POST.get('price')
-        status = request.POST.get('status')
+def cashier(request):
+    products = Products.objects.filter(status='Available')
+    cart = request.session.get('cart', {})
+    cart_items = []
+    total_price = Decimal(0)
 
-        Products.objects.create(
-            brand=brand,
-            model=model,
-            product_condition=product_condition,
-            quantity=quantity,
-            price=price,
-            status=status
-        )
-        messages.success(request, f"Product '{brand} {model}' added successfully!")
-        return redirect('products')
+    # Build cart items
+    for product_id, qty in cart.items():
+        product = get_object_or_404(Products, id=product_id)
+        subtotal = Decimal(product.price) * qty
+        total_price += subtotal
+        cart_items.append({
+            'id': product.id,
+            'brand': product.brand,
+            'model': product.model,
+            'price': product.price,
+            'quantity': qty,
+            'subtotal': subtotal
+        })
 
-    return render(request, 'users/add_product.html')
+    # Handle Add to Cart
+    if request.method == 'POST' and 'add_to_cart' in request.POST:
+        product_id = request.POST.get('product_id')
+        qty = int(request.POST.get('quantity', 1))
+        cart[str(product_id)] = cart.get(str(product_id), 0) + qty
+        request.session['cart'] = cart
+        messages.success(request, "Item added to cart.")
+        return redirect('cashier')
 
-def delete_product(request, product_id):
-    product = get_object_or_404(Products, id=product_id)
-    if request.method == 'POST':
-        product.delete()
-        messages.success(request, f"Product '{product.brand} {product.model}' deleted successfully!")
-        return redirect('products')
-    return redirect('products')
+    # Handle Checkout
+    if request.method == 'POST' and 'checkout' in request.POST:
+        amount_received = Decimal(request.POST.get('amount_received', '0'))
+        payment_mode = request.POST.get('payment_mode', 'Cash')
+        total = Decimal(total_price)
 
-def edit_product(request, product_id):
-    product = get_object_or_404(Products, id=product_id)
+        if amount_received < total:
+            messages.error(request, "❌ Insufficient amount! Please enter enough money.")
+            return redirect('cashier')
 
-    if request.method == 'POST':
-        product.brand = request.POST.get('brand')
-        product.model = request.POST.get('model')
-        product.product_condition = request.POST.get('product_condition')
-        product.quantity = request.POST.get('quantity')
-        product.price = request.POST.get('price')
-        product.status = request.POST.get('status')
-        product.save()
+        change = amount_received - total
 
-        messages.success(request, f"Product '{product.brand} {product.model}' updated successfully!")
-        return redirect('products')
+        # Save sale and update stock
+        with transaction.atomic():
+            sale = Sale.objects.create(
+                date=datetime.now(),
+                total_price=total,
+                payment_mode=payment_mode,
+                amount_received=amount_received,
+                change=change
+            )
 
-    # Render edit form with existing product data
-    return render(request, 'users/edit_product.html', {'product': product})
+            for item in cart_items:
+                SaleItem.objects.create(
+                    sale=sale,
+                    product_id=item['id'],
+                    quantity=item['quantity'],
+                    subtotal=item['subtotal']
+                )
 
+                product = Products.objects.get(id=item['id'])
+                product.quantity -= item['quantity']
+                product.save()
 
+        request.session['cart'] = {}  # clear cart
+        messages.success(request, f"✅ Sale completed successfully! Change: ₱{change:.2f}")
+        return redirect('cashier')
 
-
-def product_stock(request):
-    products = Products.objects.all()
-
-    total_products = products.count()
-    total_quantity = products.aggregate(Sum('quantity'))['quantity__sum'] or 0
-    total_value = sum([(p.quantity or 0) * (float(p.price) or 0) for p in products])
-    low_stock = products.filter(quantity__lt=5)
-
-    # add computed value for each product
-    for p in products:
-        p.total_value = (p.quantity or 0) * (float(p.price) or 0)
-
-    context = {
+    return render(request, 'users/cashier.html', {
         'products': products,
-        'total_products': total_products,
-        'total_quantity': total_quantity,
-        'total_value': total_value,
-        'low_stock': low_stock,
-    }
-    return render(request, 'users/product_stock.html', context)
+        'cart_items': cart_items,
+        'total_price': total_price,
+    })
+
+
+# -------------------------------
+# OPTIONAL: Separate add_to_cart route
+# -------------------------------
+def add_to_cart(request, product_id):
+    """Optional: separate URL handler for adding items"""
+    cart = request.session.get('cart', {})
+    product = get_object_or_404(Products, id=product_id)
+    cart[str(product_id)] = cart.get(str(product_id), 0) + 1
+    request.session['cart'] = cart
+    messages.success(request, f"{product.brand} {product.model} added to cart.")
+    return redirect('cashier')

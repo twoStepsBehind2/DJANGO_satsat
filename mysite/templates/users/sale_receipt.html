@@ -1,0 +1,83 @@
+{% load static %}
+{% include "partials/header.html" %}
+
+<body class="g-sidenav-show bg-gray-100">
+  <div class="min-height-300 bg-dark position-absolute w-100"></div>
+
+  {% include "partials/sidebar.html" %}
+
+  <main class="main-content position-relative border-radius-lg">
+    <div class="container-fluid py-4">
+      <div class="row justify-content-center">
+        <div class="col-md-8">
+          <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <div>
+                <h5 class="mb-0">Receipt</h5>
+                <small class="text-muted">Sale #{{ sale.id }}</small>
+              </div>
+              <div>
+                <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">Print</button>
+                <a href="{% url 'cashier' %}" class="btn btn-sm btn-primary">New Transaction</a>
+              </div>
+            </div>
+
+            <div class="card-body">
+              <div class="mb-3">
+                <strong>Date:</strong> {{ sale.sale_date|date:"Y-m-d H:i" }}<br>
+                <strong>Payment Mode:</strong> {{ sale.payment_mode }}<br>
+                <strong>Cash Received:</strong> ₱{{ sale.amount_received }}<br>
+                <strong>Change:</strong> ₱{{ sale.change }}
+              </div>
+
+              <div class="table-responsive">
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th class="text-end">Price</th>
+                      <th class="text-end">Qty</th>
+                      <th class="text-end">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for item in items %}
+                    <tr>
+                      <td>{{ item.product.brand }} {{ item.product.model }}</td>
+                      <td class="text-end">₱{{ item.price }}</td>
+                      <td class="text-end">{{ item.quantity }}</td>
+                      <td class="text-end">₱{{ item.subtotal }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <th colspan="3" class="text-end">Total</th>
+                      <th class="text-end">₱{{ sale.total_price }}</th>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <div class="mt-3">
+                <small class="text-muted">Thank you for your purchase!</small>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </main>
+
+  {% include "partials/footer.html" %}
+</body>
+
+<style>
+@media print {
+  .btn { display: none !important; }
+  .sidebar { display: none !important; }
+  .navbar { display: none !important; }
+  .container-fluid { width: 100% !important; }
+}
+</style>
