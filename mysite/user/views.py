@@ -5,6 +5,9 @@ from django.contrib.auth import logout as django_logout
 from .models import RegisAcc, Products
 from django.db.models import Sum
 from .models import Products
+from .models import Products, Sale, SaleItem
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
 
 
 
@@ -237,3 +240,84 @@ def product_stock(request):
         'low_stock': low_stock,
     }
     return render(request, 'users/product_stock.html', context)
+# -------------------------------
+# CASHIER MODULE
+# -------------------------------
+
+def cashier(request):
+    cart = request.session.get('cart', {})
+    products = Products.objects.filter(id__in=cart.keys())
+
+    cart_items = []
+    total_price = 0
+    total_items = 0
+
+    for product in products:
+        qty = cart[str(product.id)]
+        subtotal = qty * float(product.price)
+        total_price += subtotal
+        total_items += qty
+        cart_items.append({
+            'id': product.id,
+            'brand': product.brand,
+            'model': product.model,
+            'quantity': qty,
+            'price': product.price,
+            'subtotal': subtotal,
+        })
+
+    if request.method == 'POST':
+        payment_mode = request.POST.get('payment_mode')
+        amount_received = float(request.POST.get('amount_received', 0))
+
+        sale = Sale.objects.create(
+            payment_mode=payment_mode,
+            amount_received=amount_received,
+            total_price=total_price,
+            change=amount_received - total_price,
+        )
+
+        # Save sale items + deduct stock
+        for item in cart_items:
+            SaleItem.objects.create(
+                sale=sale,
+                product_id=item['id'],
+                quantity=item['quantity'],
+                price=item['price'],
+            )
+
+        # Clear cart
+        request.session['cart'] = {}
+        messages.success(request, f"Sale #{sale.id} completed successfully!")
+        return redirect('cashier')
+
+    context = {
+        'products': Products.objects.filter(status='Available'),
+        'cart_items': cart_items,
+        'total_price': total_price,
+        'total_items': total_items,
+    }
+    return render(request, 'users/cashier.html', context)
+
+
+def add_to_cart(request, product_id):
+    product = get_object_or_404(Products, id=product_id)
+    cart = request.session.get('cart', {})
+    cart[str(product_id)] = cart.get(str(product_id), 0) + 1
+    request.session['cart'] = cart
+    messages.success(request, f"Added {product.brand} {product.model} to cart.")
+    return redirect('cashier')
+
+
+def remove_from_cart(request, product_id):
+    cart = request.session.get('cart', {})
+    if str(product_id) in cart:
+        del cart[str(product_id)]
+        request.session['cart'] = cart
+    return redirect('cashier')
+
+
+def clear_cart(request):
+    request.session['cart'] = {}
+    messages.info(request, "Cart cleared.")
+    return redirect('cashier')
