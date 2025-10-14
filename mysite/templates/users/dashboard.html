@@ -6,7 +6,7 @@
 
   {% include "partials/sidebar.html" %}
 
-  <main class="main-content position-relative border-radius-lg ">
+  <main class="main-content position-relative border-radius-lg">
     
     <!-- 👋 Welcome Message -->
     <div class="px-4 py-3">
@@ -25,25 +25,137 @@
         </nav>
 
         <div class="collapse navbar-collapse mt-sm-0 mt-2 me-md-0 me-sm-4" id="navbar">
-
-          <!-- 🔝 Username & Logout -->
           <ul class="navbar-nav ms-auto d-flex align-items-center">
-
             <li class="nav-item">
               <a href="{% url 'logout' %}" class="btn btn-danger">Logout</a>
             </li>
           </ul>
-
         </div>
       </div>
     </nav>
     <!-- End Navbar -->
 
     <div class="container-fluid py-4">
-      <!-- Page content here -->
+
+      <!-- ✅ Dashboard Grid Cards -->
+      <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-4 justify-content-center">
+
+        <!-- Users -->
+        <div class="col">
+          <div class="card dashboard-card h-100">
+            <div class="card-body d-flex justify-content-between align-items-center">
+              <div>
+                <p class="text-sm mb-0 text-uppercase font-weight-bold">Users</p>
+                <h5 class="font-weight-bolder mb-0">{{ total_users }}</h5>
+              </div>
+              <div class="icon icon-shape bg-gradient-primary shadow text-center rounded-circle dashboard-icon">
+                <i class="fa fa-user text-white"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Products -->
+        <div class="col">
+          <div class="card dashboard-card h-100">
+            <div class="card-body d-flex justify-content-between align-items-center">
+              <div>
+                <p class="text-sm mb-0 text-uppercase font-weight-bold">Products</p>
+                <h5 class="font-weight-bolder mb-0">{{ total_products }}</h5>
+              </div>
+              <div class="icon icon-shape bg-gradient-success shadow text-center rounded-circle dashboard-icon">
+                <i class="fa fa-box text-white"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Total Stock -->
+        <div class="col">
+          <div class="card dashboard-card h-100">
+            <div class="card-body d-flex justify-content-between align-items-center">
+              <div>
+                <p class="text-sm mb-0 text-uppercase font-weight-bold">Total Stock</p>
+                <h5 class="font-weight-bolder mb-0">{{ total_stock }}</h5>
+              </div>
+              <div class="icon icon-shape bg-gradient-warning shadow text-center rounded-circle dashboard-icon">
+                <i class="fa fa-warehouse text-white"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transactions -->
+        <div class="col">
+          <div class="card dashboard-card h-100">
+            <div class="card-body d-flex justify-content-between align-items-center">
+              <div>
+                <p class="text-sm mb-0 text-uppercase font-weight-bold">Transactions</p>
+                <h5 class="font-weight-bolder mb-0">{{ total_sales_count }}</h5>
+              </div>
+              <div class="icon icon-shape bg-gradient-info shadow text-center rounded-circle dashboard-icon">
+                <i class="fa fa-shopping-cart text-white"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Total Sales -->
+        <div class="col">
+          <div class="card dashboard-card h-100">
+            <div class="card-body d-flex justify-content-between align-items-center">
+              <div>
+                <p class="text-sm mb-0 text-uppercase font-weight-bold">Total Sales</p>
+                <h5 class="font-weight-bolder mb-0">₱{{ total_sales_amount|floatformat:2 }}</h5>
+              </div>
+              <div class="icon icon-shape bg-gradient-danger shadow text-center rounded-circle dashboard-icon">
+                <i class="fa fa-money-bill-wave text-white"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
     </div>
 
     {% include "partials/footer.html" %}
   </main>
+
+  <!-- Scripts -->
+  <script src="{% static 'js/core/popper.min.js' %}"></script>
+  <script src="{% static 'js/core/bootstrap.min.js' %}"></script>
+  <script src="{% static 'js/plugins/perfect-scrollbar.min.js' %}"></script>
+  <script src="{% static 'js/plugins/smooth-scrollbar.min.js' %}"></script>
+  <script src="{% static 'js/argon-dashboard.min.js?v=2.1.0' %}"></script>
+
+  <!-- ✨ Animation & Grid Styles -->
+  <style>
+    .dashboard-card {
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+      cursor: pointer;
+      min-height: 120px;
+      border-radius: 1rem;
+    }
+    .dashboard-card:hover {
+      transform: translateY(-5px) scale(1.03);
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.15);
+    }
+    .dashboard-icon {
+      width: 45px;
+      height: 45px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.25s ease;
+    }
+    .dashboard-card:hover .dashboard-icon {
+      transform: rotate(10deg) scale(1.1);
+    }
+    .row {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+  </style>
 </body>
 </html>

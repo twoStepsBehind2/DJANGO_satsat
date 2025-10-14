@@ -28,5 +28,6 @@ urlpatterns = [
     path('cashier/add/<int:product_id>/', views.add_to_cart, name='add_to_cart'),
     path('cashier/remove/<int:product_id>/', views.remove_from_cart, name='remove_from_cart'),
     path('cashier/clear/', views.clear_cart, name='clear_cart'),
+  
 
 ]

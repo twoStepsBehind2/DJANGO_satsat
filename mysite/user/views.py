@@ -6,8 +6,11 @@ from .models import RegisAcc, Products
 from django.db.models import Sum
 from .models import Products
 from .models import Products, Sale, SaleItem
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages
+from django.db import transaction
+from django.utils import timezone
+from decimal import Decimal
+
+
 
 
 
@@ -240,21 +243,19 @@ def product_stock(request):
         'low_stock': low_stock,
     }
     return render(request, 'users/product_stock.html', context)
-# -------------------------------
-# CASHIER MODULE
-# -------------------------------
 
 def cashier(request):
     cart = request.session.get('cart', {})
     products = Products.objects.filter(id__in=cart.keys())
 
     cart_items = []
-    total_price = 0
+    total_price = Decimal('0.00')
     total_items = 0
 
     for product in products:
         qty = cart[str(product.id)]
-        subtotal = qty * float(product.price)
+        # product.price is already Decimal, so just use Decimal math
+        subtotal = Decimal(qty) * product.price
         total_price += subtotal
         total_items += qty
         cart_items.append({
@@ -268,27 +269,54 @@ def cashier(request):
 
     if request.method == 'POST':
         payment_mode = request.POST.get('payment_mode')
-        amount_received = float(request.POST.get('amount_received', 0))
+        amount_received = Decimal(request.POST.get('amount_received', '0'))
 
-        sale = Sale.objects.create(
-            payment_mode=payment_mode,
-            amount_received=amount_received,
-            total_price=total_price,
-            change=amount_received - total_price,
-        )
+        # 🚨 Check if amount received is enough
+        if amount_received < total_price:
+            messages.error(request, "Insufficient payment. Transaction canceled.")
+            return redirect('cashier')
 
-        # Save sale items + deduct stock
-        for item in cart_items:
-            SaleItem.objects.create(
-                sale=sale,
-                product_id=item['id'],
-                quantity=item['quantity'],
-                price=item['price'],
-            )
+        try:
+            with transaction.atomic():
+                # ✅ Check stock before creating sale
+                for item in cart_items:
+                    product = Products.objects.select_for_update().get(id=item['id'])
+                    if product.quantity < item['quantity']:
+                        messages.error(request, f"Insufficient stock for {product.brand} {product.model}.")
+                        return redirect('cashier')
 
-        # Clear cart
-        request.session['cart'] = {}
-        messages.success(request, f"Sale #{sale.id} completed successfully!")
+                # ✅ Create Sale record
+                sale = Sale.objects.create(
+                    payment_mode=payment_mode,
+                    amount_received=amount_received,
+                    total_price=total_price,
+                    change=amount_received - total_price,  # ✅ Decimal - Decimal works
+                    sale_date=timezone.now()
+                )
+
+                # ✅ Create SaleItem records (stock deducts in model save)
+                for item in cart_items:
+                    SaleItem.objects.create(
+                        sale=sale,
+                        product_id=item['id'],
+                        quantity=item['quantity'],
+                        price=item['price']
+                    )
+
+                sale.update_totals()
+                request.session['cart'] = {}
+
+                # ✅ Optional: show change to user
+                messages.success(
+                    request, 
+                    f"Sale #{sale.id} completed successfully! Change: ₱{sale.change:.2f}"
+                )
+
+        except ValueError as e:
+            messages.error(request, str(e))
+        except Exception as e:
+            messages.error(request, f"Transaction failed: {str(e)}")
+
         return redirect('cashier')
 
     context = {
@@ -299,7 +327,6 @@ def cashier(request):
     }
     return render(request, 'users/cashier.html', context)
 
-
 def add_to_cart(request, product_id):
     product = get_object_or_404(Products, id=product_id)
     cart = request.session.get('cart', {})
@@ -307,7 +334,6 @@ def add_to_cart(request, product_id):
     request.session['cart'] = cart
     messages.success(request, f"Added {product.brand} {product.model} to cart.")
     return redirect('cashier')
-
 
 def remove_from_cart(request, product_id):
     cart = request.session.get('cart', {})
@@ -321,3 +347,19 @@ def clear_cart(request):
     request.session['cart'] = {}
     messages.info(request, "Cart cleared.")
     return redirect('cashier')
+
+def dashboard(request):
+    total_users = RegisAcc.objects.count()
+    total_products = Products.objects.count()
+    total_stock = Products.objects.aggregate(total_qty=Sum('quantity'))['total_qty'] or 0
+    total_sales_count = Sale.objects.count()
+    total_sales_amount = Sale.objects.aggregate(total_amount=Sum('total_price'))['total_amount'] or 0
+
+    context = {
+        'total_users': total_users,
+        'total_products': total_products,
+        'total_stock': total_stock,
+        'total_sales_count': total_sales_count,
+        'total_sales_amount': total_sales_amount,
+    }
+    return render(request, 'users/dashboard.html', context)
