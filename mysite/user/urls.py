@@ -23,6 +23,8 @@ urlpatterns = [
     # Stock Report
     # -------------------------------
     path('product_stock/', views.product_stock, name='product_stock'),
+    path('cashier/', views.cashier, name='cashier'),
+    
     
 
 
