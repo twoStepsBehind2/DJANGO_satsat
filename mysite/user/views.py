@@ -10,12 +10,9 @@ from django.db import transaction
 from django.utils import timezone
 from decimal import Decimal
 from .models import Sale, SaleItem
-
-
-
-
-
-
+from django.db.models import Sum, F, ExpressionWrapper, DecimalField
+from django.shortcuts import render
+from .models import SaleItem
 
 # -------------------------------
 # LOGOUT
@@ -394,3 +391,27 @@ def total_sales_view(request):
         'total_transactions': total_transactions,
     }
     return render(request, 'users/totalsales.html', context)
+
+def stock_sold_view(request):
+    sold_items = SaleItem.objects.select_related('product', 'sale').order_by('-sale__sale_date')
+
+    # ✅ Compute total products sold
+    total_products_sold = sold_items.aggregate(total=Sum('quantity'))['total'] or 0
+
+    # ✅ Compute total sales value (quantity × price)
+    total_sales_value = sold_items.aggregate(
+        total=Sum(
+            ExpressionWrapper(F('quantity') * F('price'), output_field=DecimalField(max_digits=12, decimal_places=2))
+        )
+    )['total'] or 0
+
+    # ✅ Count distinct brands sold
+    total_brands_sold = sold_items.values('product__brand').distinct().count()
+
+    context = {
+        'sold_items': sold_items,
+        'total_products_sold': total_products_sold,
+        'total_sales_value': total_sales_value,
+        'total_brands_sold': total_brands_sold,
+    }
+    return render(request, 'users/stocksold.html', context)

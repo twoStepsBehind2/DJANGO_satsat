@@ -32,5 +32,8 @@ urlpatterns = [
     # Total Sales Module
     path('total_sales/', views.total_sales_view, name='total_sales'),
 
+    # Total stocksold
+    path('stocksold/', views.stock_sold_view, name='stocksold'),
+
 
 ]

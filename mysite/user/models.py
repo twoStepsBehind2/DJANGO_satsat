@@ -75,3 +75,13 @@ class SaleItem(models.Model):
             self.product.quantity -= self.quantity
             self.product.save()
         super().save(*args, **kwargs)
+
+class SaleItem(models.Model):
+    sale = models.ForeignKey('Sale', related_name="items", on_delete=models.CASCADE)
+    product = models.ForeignKey('Products', on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField()
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    @property
+    def subtotal(self):
+        return self.quantity * self.price
