@@ -1,23 +1,16 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth import logout as django_logout
-from .models import RegisAcc, Products
-from django.db.models import Sum
-from .models import Products
-from .models import Products, Sale, SaleItem
+from .models import RegisAcc, Products, Sale, SaleItem
+from django.db.models import Sum, F, ExpressionWrapper, DecimalField
 from django.db import transaction
 from django.utils import timezone
 from decimal import Decimal
-from .models import Sale, SaleItem
-from django.db.models import Sum, F, ExpressionWrapper, DecimalField
-from django.shortcuts import render
-from .models import SaleItem
 import io
 from django.http import HttpResponse
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
-
 
 # -------------------------------
 # LOGOUT
@@ -49,9 +42,8 @@ def index(request):
             user = RegisAcc.objects.get(username=username, password=password)
             request.session['user_id'] = user.id
             request.session['user_name'] = user.name
-            request.session['user_position'] = user.position  # 🆕 store user role
+            request.session['user_position'] = user.position  # store user role
 
-            # 👮 Role-based redirection
             if user.position == 'Admin':
                 return redirect('dashboard')
             elif user.position == 'Cashier':
@@ -65,6 +57,7 @@ def index(request):
 
     return render(request, 'users/index.html')
 
+
 # -------------------------------
 # DASHBOARD
 # -------------------------------
@@ -73,7 +66,7 @@ def dashboard(request):
 
 
 # -------------------------------
-# USER LIST
+# USER LIST / CRUD
 # -------------------------------
 def userlist(request):
     if request.method == 'POST':
@@ -98,9 +91,6 @@ def userlist(request):
     return render(request, 'users/userlist.html', {'users': users})
 
 
-# -------------------------------
-# EDIT USER
-# -------------------------------
 def edit_user(request, user_id):
     user = get_object_or_404(RegisAcc, id=user_id)
     if request.method == 'POST':
@@ -118,9 +108,6 @@ def edit_user(request, user_id):
     return redirect('userlist')
 
 
-# -------------------------------
-# DELETE USER
-# -------------------------------
 def delete_user(request, user_id):
     user = get_object_or_404(RegisAcc, id=user_id)
     if request.method == 'POST':
@@ -157,8 +144,6 @@ def signup(request):
             messages.error(request, "Username already exists. Choose another.")
             return redirect('signup')
 
-        
-
         new_user = RegisAcc(
             name=name,
             username=username,
@@ -181,9 +166,6 @@ def products(request):
     return render(request, 'users/products.html', {'products': products})
 
 
-# -------------------------------
-# ADD PRODUCT
-# -------------------------------
 def add_product(request):
     if request.method == 'POST':
         brand = request.POST.get('brand')
@@ -206,6 +188,7 @@ def add_product(request):
 
     return render(request, 'users/add_product.html')
 
+
 def delete_product(request, product_id):
     product = get_object_or_404(Products, id=product_id)
     if request.method == 'POST':
@@ -213,6 +196,7 @@ def delete_product(request, product_id):
         messages.success(request, f"Product '{product.brand} {product.model}' deleted successfully!")
         return redirect('products')
     return redirect('products')
+
 
 def edit_product(request, product_id):
     product = get_object_or_404(Products, id=product_id)
@@ -229,12 +213,12 @@ def edit_product(request, product_id):
         messages.success(request, f"Product '{product.brand} {product.model}' updated successfully!")
         return redirect('products')
 
-    # Render edit form with existing product data
     return render(request, 'users/edit_product.html', {'product': product})
 
 
-
-
+# -------------------------------
+# STOCK / REPORTS
+# -------------------------------
 def product_stock(request):
     products = Products.objects.all()
 
@@ -243,7 +227,6 @@ def product_stock(request):
     total_value = sum([(p.quantity or 0) * (float(p.price) or 0) for p in products])
     low_stock = products.filter(quantity__lt=5)
 
-    # add computed value for each product
     for p in products:
         p.total_value = (p.quantity or 0) * (float(p.price) or 0)
 
@@ -256,19 +239,18 @@ def product_stock(request):
     }
     return render(request, 'users/product_stock.html', context)
 
+
+# -------------------------------
+# CASHIER
+# -------------------------------
 def cashier(request):
     cart = request.session.get('cart', {})
 
-    # 🔍 Search Feature (Brand + Model)
+    # Search (brand + model)
     query = request.GET.get('q', '')
     products_list = Products.objects.filter(status='Available')
     if query:
-        products_list = products_list.filter(
-            brand__icontains=query
-        ) | Products.objects.filter(
-            status='Available',
-            model__icontains=query
-        )
+        products_list = products_list.filter(brand__icontains=query) | Products.objects.filter(status='Available', model__icontains=query)
 
     cart_items = []
     total_price = Decimal('0.00')
@@ -276,7 +258,7 @@ def cashier(request):
 
     products_in_cart = Products.objects.filter(id__in=cart.keys())
     for product in products_in_cart:
-        qty = cart[str(product.id)]
+        qty = cart.get(str(product.id), 0)
         subtotal = Decimal(qty) * product.price
         total_price += subtotal
         total_items += qty
@@ -289,7 +271,8 @@ def cashier(request):
             'subtotal': subtotal,
         })
 
-    if request.method == 'POST':
+    # Payment processing - POST
+    if request.method == 'POST' and 'payment_mode' in request.POST:
         payment_mode = request.POST.get('payment_mode')
         amount_received = Decimal(request.POST.get('amount_received', '0'))
 
@@ -299,12 +282,14 @@ def cashier(request):
 
         try:
             with transaction.atomic():
+                # stock check
                 for item in cart_items:
                     product = Products.objects.select_for_update().get(id=item['id'])
                     if product.quantity < item['quantity']:
                         messages.error(request, f"Insufficient stock for {product.brand} {product.model}.")
                         return redirect('cashier')
 
+                # create sale
                 sale = Sale.objects.create(
                     payment_mode=payment_mode,
                     amount_received=amount_received,
@@ -313,6 +298,7 @@ def cashier(request):
                     sale_date=timezone.now()
                 )
 
+                # create sale items and deduct stock
                 for item in cart_items:
                     SaleItem.objects.create(
                         sale=sale,
@@ -320,236 +306,87 @@ def cashier(request):
                         quantity=item['quantity'],
                         price=item['price']
                     )
+                    # deduct stock (optional here or handled in SaleItem.save)
+                    prod = Products.objects.get(id=item['id'])
+                    prod.quantity = prod.quantity - item['quantity']
+                    prod.save()
 
+                # update totals & clear cart
                 sale.update_totals()
+                sale.refresh_from_db()
                 request.session['cart'] = {}
+                request.session.modified = True
 
-                messages.success(
-                    request, 
-                    f"Sale #{sale.id} completed successfully! Change: ₱{sale.change:.2f}"
-                )
+                # return PDF receipt for download
+                return generate_receipt_pdf(request, sale.id)
 
         except Exception as e:
             messages.error(request, f"Transaction failed: {str(e)}")
-
-        return redirect('cashier')
+            return redirect('cashier')
 
     context = {
         'products': products_list,
         'cart_items': cart_items,
         'total_price': total_price,
         'total_items': total_items,
-        'query': query,  # Keep search keyword in input
-    }
-    return render(request, 'users/cashier.html', context)       
-
-    cart = request.session.get('cart', {})
-    products = Products.objects.filter(id__in=cart.keys())
-
-    cart_items = []
-    total_price = Decimal('0.00')
-    total_items = 0
-
-    for product in products:
-        qty = cart[str(product.id)]
-        # product.price is already Decimal, so just use Decimal math
-        subtotal = Decimal(qty) * product.price
-        total_price += subtotal
-        total_items += qty
-        cart_items.append({
-            'id': product.id,
-            'brand': product.brand,
-            'model': product.model,
-            'quantity': qty,
-            'price': product.price,
-            'subtotal': subtotal,
-        })
-
-    if request.method == 'POST':
-        payment_mode = request.POST.get('payment_mode')
-        amount_received = Decimal(request.POST.get('amount_received', '0'))
-
-        # 🚨 Check if amount received is enough
-        if amount_received < total_price:
-            messages.error(request, "Insufficient payment. Transaction canceled.")
-            return redirect('cashier')
-
-        try:
-            with transaction.atomic():
-                # ✅ Check stock before creating sale
-                for item in cart_items:
-                    product = Products.objects.select_for_update().get(id=item['id'])
-                    if product.quantity < item['quantity']:
-                        messages.error(request, f"Insufficient stock for {product.brand} {product.model}.")
-                        return redirect('cashier')
-
-                # ✅ Create Sale record
-                sale = Sale.objects.create(
-                    payment_mode=payment_mode,
-                    amount_received=amount_received,
-                    total_price=total_price,
-                    change=amount_received - total_price,  # ✅ Decimal - Decimal works
-                    sale_date=timezone.now()
-                )
-
-                # ✅ Create SaleItem records (stock deducts in model save)
-                for item in cart_items:
-                    SaleItem.objects.create(
-                        sale=sale,
-                        product_id=item['id'],
-                        quantity=item['quantity'],
-                        price=item['price']
-                    )
-
-                sale.update_totals()
-                request.session['cart'] = {}
-
-                # ✅ Optional: show change to user
-                messages.success(
-                    request, 
-                    f"Sale #{sale.id} completed successfully! Change: ₱{sale.change:.2f}"
-                )
-
-        except ValueError as e:
-            messages.error(request, str(e))
-        except Exception as e:
-            messages.error(request, f"Transaction failed: {str(e)}")
-
-        return redirect('cashier')
-
-    context = {
-        'products': Products.objects.filter(status='Available'),
-        'cart_items': cart_items,
-        'total_price': total_price,
-        'total_items': total_items,
+        'query': query,
     }
     return render(request, 'users/cashier.html', context)
 
+
+# -------------------------------
+# CART HELPERS
+# -------------------------------
 def add_to_cart(request, product_id):
     product = get_object_or_404(Products, id=product_id)
     cart = request.session.get('cart', {})
     cart[str(product_id)] = cart.get(str(product_id), 0) + 1
     request.session['cart'] = cart
+    request.session.modified = True
     messages.success(request, f"Added {product.brand} {product.model} to cart.")
     return redirect('cashier')
+
 
 def remove_from_cart(request, product_id):
     cart = request.session.get('cart', {})
     if str(product_id) in cart:
         del cart[str(product_id)]
         request.session['cart'] = cart
+        request.session.modified = True
     return redirect('cashier')
 
 
 def clear_cart(request):
     request.session['cart'] = {}
+    request.session.modified = True
     messages.info(request, "Cart cleared.")
     return redirect('cashier')
 
-def dashboard(request):
-    total_users = RegisAcc.objects.count()
-    total_products = Products.objects.count()
-    total_stock = Products.objects.aggregate(total_qty=Sum('quantity'))['total_qty'] or 0
-    total_sales_count = Sale.objects.count()
-    total_sales_amount = Sale.objects.aggregate(total_amount=Sum('total_price'))['total_amount'] or 0
 
-    context = {
-        'total_users': total_users,
-        'total_products': total_products,
-        'total_stock': total_stock,
-        'total_sales_count': total_sales_count,
-        'total_sales_amount': total_sales_amount,
-    }
-    return render(request, 'users/dashboard.html', context)
-
-def total_sales_view(request):
-    # 🧾 All sales ordered by latest date
-    sales = Sale.objects.all().order_by('-sale_date')
-
-    # 💰 Total sales revenue
-    total_sales_amount = sales.aggregate(Sum('total_price'))['total_price__sum'] or 0
-
-    # 🛍 Total number of products sold
-    total_products_sold = SaleItem.objects.aggregate(Sum('quantity'))['quantity__sum'] or 0
-
-    # 🧮 Total number of transactions
-    total_transactions = sales.count()
-
-    context = {
-        'sales': sales,
-        'total_sales_amount': total_sales_amount,
-        'total_products_sold': total_products_sold,
-        'total_transactions': total_transactions,
-    }
-    return render(request, 'users/totalsales.html', context)
-
-def stock_sold_view(request):
-    sold_items = SaleItem.objects.select_related('product', 'sale').order_by('-sale__sale_date')
-
-    # ✅ Compute total products sold
-    total_products_sold = sold_items.aggregate(total=Sum('quantity'))['total'] or 0
-
-    # ✅ Compute total sales value (quantity × price)
-    total_sales_value = sold_items.aggregate(
-        total=Sum(
-            ExpressionWrapper(F('quantity') * F('price'), output_field=DecimalField(max_digits=12, decimal_places=2))
-        )
-    )['total'] or 0
-
-    # ✅ Count distinct brands sold
-    total_brands_sold = sold_items.values('product__brand').distinct().count()
-
-    context = {
-        'sold_items': sold_items,
-        'total_products_sold': total_products_sold,
-        'total_sales_value': total_sales_value,
-        'total_brands_sold': total_brands_sold,
-    }
-    return render(request, 'users/stocksold.html', context)
-
-def set_quantity(request, product_id):
-    if request.method == 'POST':
-        quantity = int(request.POST.get('quantity', 1))
-        cart = request.session.get('cart', {})
-
-        # Update cart quantity
-        cart[str(product_id)] = quantity
-        request.session['cart'] = cart
-
-        # ✅ Force session save
-        request.session.modified = True
-
-        messages.success(request, "Quantity updated!")
-
-    return redirect('cashier')  # Recalculate totals in cashier view
-
+# -------------------------------
+# RECEIPT (PDF)
+# -------------------------------
 def generate_receipt_pdf(request, sale_id):
-    """
-    Generate a PDF receipt for sale_id and return as download response.
-    """
     sale = get_object_or_404(Sale, id=sale_id)
     items = SaleItem.objects.filter(sale=sale)
 
     buffer = io.BytesIO()
-    # Use letter (can change to A4 if desired)
     p = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
-    # Basic margins
     left_margin = 15 * mm
     right_margin = width - 15 * mm
     y = height - 20 * mm
 
-    # Header - Store information
+    # Header
     p.setFont("Helvetica-Bold", 14)
     p.drawString(left_margin, y, "GPU Market")
     p.setFont("Helvetica", 9)
     y -= 6 * mm
-    # optional contact/address - omitted unless provided
     p.drawString(left_margin, y, "Receipt")
     y -= 8 * mm
 
-    # Sale meta
+    # Meta
     p.setFont("Helvetica", 9)
     cashier_name = request.session.get('user_name', 'Unknown')
     p.drawString(left_margin, y, f"Cashier: {cashier_name}")
@@ -559,7 +396,7 @@ def generate_receipt_pdf(request, sale_id):
     p.drawString(left_margin, y, f"Date: {sale_dt.strftime('%Y-%m-%d %H:%M:%S')}")
     y -= 8 * mm
 
-    # Table headers
+    # Table header
     p.setFont("Helvetica-Bold", 9)
     p.drawString(left_margin, y, "Item")
     p.drawRightString(left_margin + 70*mm, y, "Qty")
@@ -570,19 +407,16 @@ def generate_receipt_pdf(request, sale_id):
     p.line(left_margin, y, right_margin, y)
     y -= 4 * mm
 
+    # Items
     p.setFont("Helvetica", 9)
-    # List items
     for si in items:
-        # try to get product display name
         try:
-            product = si.product  # if FK exists
+            product = si.product
             name = f"{product.brand} {product.model}"
         except Exception:
-            # fallback if only product_id stored
             prod = Products.objects.filter(id=si.product_id).first()
             name = f"{prod.brand} {prod.model}" if prod else f"Product {si.product_id}"
 
-        # ensure text doesn't overflow: simple truncate
         max_name_chars = 30
         if len(name) > max_name_chars:
             name = name[:max_name_chars-3] + "..."
@@ -597,7 +431,6 @@ def generate_receipt_pdf(request, sale_id):
         p.drawRightString(right_margin, y, f"₱{subtotal:.2f}")
         y -= 5 * mm
 
-        # New page if running out of space
         if y < 30*mm:
             p.showPage()
             y = height - 20*mm
@@ -626,12 +459,50 @@ def generate_receipt_pdf(request, sale_id):
     p.drawCentredString((left_margin + right_margin)/2, y, "Thank you for shopping at GPU Market!")
     y -= 8 * mm
 
-    # Finish up
     p.showPage()
     p.save()
 
     buffer.seek(0)
     filename = f"receipt_{sale.id}.pdf"
     response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    response['Content-Disposition'] = f'attachment; filename=\"{filename}\"'
     return response
+
+
+# -------------------------------
+# REPORTS / SALES
+# -------------------------------
+def dashboard(request):
+    return render(request, 'users/dashboard.html')
+
+
+def total_sales_view(request):
+    sales = Sale.objects.all().order_by('-sale_date')
+    total_sales_amount = sales.aggregate(Sum('total_price'))['total_price__sum'] or 0
+    total_products_sold = SaleItem.objects.aggregate(Sum('quantity'))['quantity__sum'] or 0
+    total_transactions = sales.count()
+
+    context = {
+        'sales': sales,
+        'total_sales_amount': total_sales_amount,
+        'total_products_sold': total_products_sold,
+        'total_transactions': total_transactions,
+    }
+    return render(request, 'users/totalsales.html', context)
+
+
+def stock_sold_view(request):
+    sold_items = SaleItem.objects.select_related('product', 'sale').order_by('-sale__sale_date')
+    total_products_sold = sold_items.aggregate(total=Sum('quantity'))['total'] or 0
+    total_sales_value = sold_items.aggregate(
+        total=Sum(ExpressionWrapper(F('quantity') * F('price'), output_field=DecimalField(max_digits=12, decimal_places=2)))
+    )['total'] or 0
+    total_brands_sold = sold_items.values('product__brand').distinct().count()
+
+    context = {
+        'sold_items': sold_items,
+        'total_products_sold': total_products_sold,
+        'total_sales_value': total_sales_value,
+        'total_brands_sold': total_brands_sold,
+    }
+    return render(request, 'users/stocksold.html', context)
