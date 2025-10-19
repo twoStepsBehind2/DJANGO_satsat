@@ -1,0 +1,8 @@
+[build]
+command = "pip install -r requirements.txt && python manage.py collectstatic --noinput"
+publish = "static"
+
+[build.environment]
+RUSTUP_HOME = "/opt/buildhome/.rustup"
+CARGO_HOME = "/opt/buildhome/.cargo"
+PATH = "/opt/buildhome/.cargo/bin:/opt/buildhome/.rustup/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
