@@ -12,6 +12,12 @@ from .models import Sale, SaleItem
 from django.db.models import Sum, F, ExpressionWrapper, DecimalField
 from django.shortcuts import render
 from .models import SaleItem
+import io
+from django.http import HttpResponse
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import mm
+
 
 # -------------------------------
 # LOGOUT
@@ -516,3 +522,116 @@ def set_quantity(request, product_id):
         messages.success(request, "Quantity updated!")
 
     return redirect('cashier')  # Recalculate totals in cashier view
+
+def generate_receipt_pdf(request, sale_id):
+    """
+    Generate a PDF receipt for sale_id and return as download response.
+    """
+    sale = get_object_or_404(Sale, id=sale_id)
+    items = SaleItem.objects.filter(sale=sale)
+
+    buffer = io.BytesIO()
+    # Use letter (can change to A4 if desired)
+    p = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    # Basic margins
+    left_margin = 15 * mm
+    right_margin = width - 15 * mm
+    y = height - 20 * mm
+
+    # Header - Store information
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(left_margin, y, "GPU Market")
+    p.setFont("Helvetica", 9)
+    y -= 6 * mm
+    # optional contact/address - omitted unless provided
+    p.drawString(left_margin, y, "Receipt")
+    y -= 8 * mm
+
+    # Sale meta
+    p.setFont("Helvetica", 9)
+    cashier_name = request.session.get('user_name', 'Unknown')
+    p.drawString(left_margin, y, f"Cashier: {cashier_name}")
+    p.drawRightString(right_margin, y, f"Sale ID: {sale.id}")
+    y -= 5 * mm
+    sale_dt = sale.sale_date if sale.sale_date else timezone.now()
+    p.drawString(left_margin, y, f"Date: {sale_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+    y -= 8 * mm
+
+    # Table headers
+    p.setFont("Helvetica-Bold", 9)
+    p.drawString(left_margin, y, "Item")
+    p.drawRightString(left_margin + 70*mm, y, "Qty")
+    p.drawRightString(left_margin + 95*mm, y, "Price")
+    p.drawRightString(right_margin, y, "Subtotal")
+    y -= 5 * mm
+    p.setLineWidth(0.3)
+    p.line(left_margin, y, right_margin, y)
+    y -= 4 * mm
+
+    p.setFont("Helvetica", 9)
+    # List items
+    for si in items:
+        # try to get product display name
+        try:
+            product = si.product  # if FK exists
+            name = f"{product.brand} {product.model}"
+        except Exception:
+            # fallback if only product_id stored
+            prod = Products.objects.filter(id=si.product_id).first()
+            name = f"{prod.brand} {prod.model}" if prod else f"Product {si.product_id}"
+
+        # ensure text doesn't overflow: simple truncate
+        max_name_chars = 30
+        if len(name) > max_name_chars:
+            name = name[:max_name_chars-3] + "..."
+
+        qty = int(si.quantity)
+        price = si.price
+        subtotal = (Decimal(qty) * Decimal(price))
+
+        p.drawString(left_margin, y, name)
+        p.drawRightString(left_margin + 70*mm, y, str(qty))
+        p.drawRightString(left_margin + 95*mm, y, f"₱{price:.2f}")
+        p.drawRightString(right_margin, y, f"₱{subtotal:.2f}")
+        y -= 5 * mm
+
+        # New page if running out of space
+        if y < 30*mm:
+            p.showPage()
+            y = height - 20*mm
+            p.setFont("Helvetica", 9)
+
+    y -= 4 * mm
+    p.line(left_margin, y, right_margin, y)
+    y -= 6 * mm
+
+    # Totals
+    p.setFont("Helvetica-Bold", 10)
+    p.drawRightString(right_margin - 40*mm, y, "Total:")
+    p.drawRightString(right_margin, y, f"₱{sale.total_price:.2f}")
+    y -= 6 * mm
+
+    p.setFont("Helvetica", 9)
+    p.drawRightString(right_margin - 40*mm, y, "Amount Received:")
+    p.drawRightString(right_margin, y, f"₱{sale.amount_received:.2f}")
+    y -= 5 * mm
+
+    p.drawRightString(right_margin - 40*mm, y, "Change:")
+    p.drawRightString(right_margin, y, f"₱{sale.change:.2f}")
+    y -= 10 * mm
+
+    p.setFont("Helvetica-Oblique", 9)
+    p.drawCentredString((left_margin + right_margin)/2, y, "Thank you for shopping at GPU Market!")
+    y -= 8 * mm
+
+    # Finish up
+    p.showPage()
+    p.save()
+
+    buffer.seek(0)
+    filename = f"receipt_{sale.id}.pdf"
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
