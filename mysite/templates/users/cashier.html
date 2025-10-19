@@ -1,4 +1,5 @@
 {% load static %}
+{% load humanize %}
 {% include "partials/header.html" %}
 
 <body class="g-sidenav-show bg-gray-100">
@@ -44,11 +45,11 @@
                   <tbody>
                     {% for p in products %}
                     <tr>
-                      <td>{{ p.id }}</td>
+                      <td>{{ p.id|intcomma }}</td>
                       <td>{{ p.brand }}</td>
                       <td>{{ p.model }}</td>
-                      <td>{{ p.quantity }}</td>
-                      <td>₱{{ p.price }}</td>
+                      <td>{{ p.quantity|intcomma }}</td>
+                      <td>₱{{ p.price|floatformat:2|intcomma }}</td>
                       <td><a href="{% url 'add_to_cart' p.id %}" class="btn btn-sm btn-primary">Add</a></td>
                     </tr>
                     {% empty %}
@@ -70,8 +71,8 @@
                 <div class="d-flex justify-content-between align-items-center mb-2 border-bottom pb-2">
                   <div>
                     <strong>{{ item.brand }} {{ item.model }}</strong><br>
-                    <small>Price: ₱{{ item.price }}</small><br>
-                    <small>Subtotal: ₱{{ item.subtotal }}</small>
+                    <small>Price: ₱{{ item.price|floatformat:2|intcomma }}</small><br>
+                    <small>Subtotal: ₱{{ item.subtotal|floatformat:2|intcomma }}</small>
                   </div>
                   <div class="d-flex align-items-center">
                     <form action="{% url 'set_quantity' item.id %}" method="POST" class="auto-submit-form me-2">
@@ -83,8 +84,8 @@
                 </div>
                 {% endfor %}
 
-                <p><strong>Total Items:</strong> {{ total_items }}</p>
-                <p><strong>Total Price:</strong> ₱{{ total_price|floatformat:2 }}</p>
+                <p><strong>Total Items:</strong> {{ total_items|intcomma }}</p>
+                <p><strong>Total Price:</strong> ₱{{ total_price|floatformat:2|intcomma }}</p>
 
                 <form method="POST">
                   {% csrf_token %}
@@ -132,8 +133,7 @@
         });
       });
     }
-  </script>
-  <script>
+
     document.querySelectorAll('.auto-submit-form .qty-input').forEach(input => {
       input.addEventListener('change', function() { this.form.submit(); });
     });

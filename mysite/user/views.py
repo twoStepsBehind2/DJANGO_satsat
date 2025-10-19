@@ -11,6 +11,12 @@ from django.http import HttpResponse
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import os
+
+
+
 
 # -------------------------------
 # LOGOUT
@@ -62,9 +68,21 @@ def index(request):
 # DASHBOARD
 # -------------------------------
 def dashboard(request):
-    return render(request, 'users/dashboard.html')
+    total_users = RegisAcc.objects.count()
+    total_products = Products.objects.count()
+    total_stock = Products.objects.aggregate(total=Sum('quantity'))['total'] or 0
+    total_sales_count = Sale.objects.count()
+    total_sales_amount = SaleItem.objects.aggregate(total=Sum(ExpressionWrapper(F('quantity') * F('price'), output_field=DecimalField())))['total'] or 0
 
+    context = {
+        'total_users': total_users,
+        'total_products': total_products,
+        'total_stock': total_stock,
+        'total_sales_count': total_sales_count,
+        'total_sales_amount': total_sales_amount,
+    }
 
+    return render(request, 'users/dashboard.html', context)
 # -------------------------------
 # USER LIST / CRUD
 # -------------------------------
@@ -243,6 +261,8 @@ def product_stock(request):
 # -------------------------------
 # CASHIER
 # -------------------------------
+
+
 def cashier(request):
     cart = request.session.get('cart', {})
 
@@ -250,7 +270,108 @@ def cashier(request):
     query = request.GET.get('q', '')
     products_list = Products.objects.filter(status='Available')
     if query:
-        products_list = products_list.filter(brand__icontains=query) | Products.objects.filter(status='Available', model__icontains=query)
+        products_list = products_list.filter(brand__icontains=query) | Products.objects.filter(
+            status='Available', model__icontains=query
+        )
+
+    cart_items = []
+    total_price = Decimal('0.00')
+    total_items = 0
+
+    products_in_cart = Products.objects.filter(id__in=cart.keys())
+    for product in products_in_cart:
+        qty = cart.get(str(product.id), 0)
+        subtotal = Decimal(qty) * product.price
+        total_price += subtotal
+        total_items += qty
+        cart_items.append({
+            'id': product.id,
+            'brand': product.brand,
+            'model': product.model,
+            'quantity': qty,
+            'price': product.price,
+            'subtotal': subtotal,
+        })
+
+    # 🧾 Payment Processing
+    if request.method == 'POST' and 'payment_mode' in request.POST:
+        payment_mode = request.POST.get('payment_mode')
+        amount_received = Decimal(request.POST.get('amount_received', '0'))
+
+        if amount_received < total_price:
+            messages.error(request, "Insufficient payment. Transaction canceled.")
+            return redirect('cashier')
+
+        try:
+            with transaction.atomic():
+                # ✅ Check stock first
+                for item in cart_items:
+                    product = Products.objects.select_for_update().get(id=item['id'])
+                    if product.quantity < item['quantity']:
+                        messages.error(request, f"Insufficient stock for {product.brand} {product.model}.")
+                        return redirect('cashier')
+
+                # ✅ Create Sale record
+                sale = Sale.objects.create(
+                    payment_mode=payment_mode,
+                    amount_received=amount_received,
+                    total_price=total_price,
+                    change=amount_received - total_price,
+                    sale_date=timezone.now()
+                )
+
+                # ✅ Create SaleItems + Deduct Stock
+                for item in cart_items:
+                    SaleItem.objects.create(
+                        sale=sale,
+                        product_id=item['id'],
+                        quantity=item['quantity'],
+                        price=item['price']
+                    )
+                    prod = Products.objects.get(id=item['id'])
+                    prod.quantity -= item['quantity']
+                    prod.save()
+
+                sale.update_totals()
+                sale.refresh_from_db()
+
+                # ✅ Clear the cart after payment
+                request.session['cart'] = {}
+                request.session.modified = True
+
+                # ✅ Show success message
+                messages.success(request, f"Transaction completed! Receipt #{sale.id} generated.")
+
+                # ✅ Generate PDF receipt and auto-refresh cashier page
+                response = generate_receipt_pdf(request, sale.id)
+
+                # This header causes the browser to reload /cashier/ after 2 seconds
+                response["Refresh"] = "2;url=/cashier/"
+                return response
+
+        except Exception as e:
+            messages.error(request, f"Transaction failed: {str(e)}")
+            return redirect('cashier')
+
+    # Default context
+    context = {
+        'products': products_list,
+        'cart_items': cart_items,
+        'total_price': total_price,
+        'total_items': total_items,
+        'query': query,
+    }
+    return render(request, 'users/cashier.html', context)
+
+    cart = request.session.get('cart', {})
+
+    # Search (brand + model)
+    query = request.GET.get('q', '')
+    products_list = Products.objects.filter(status='Available')
+    if query:
+        products_list = products_list.filter(brand__icontains=query) | Products.objects.filter(
+            status='Available', model__icontains=query
+        )
 
     cart_items = []
     total_price = Decimal('0.00')
@@ -282,14 +403,14 @@ def cashier(request):
 
         try:
             with transaction.atomic():
-                # stock check
+                # Check stock
                 for item in cart_items:
                     product = Products.objects.select_for_update().get(id=item['id'])
                     if product.quantity < item['quantity']:
                         messages.error(request, f"Insufficient stock for {product.brand} {product.model}.")
                         return redirect('cashier')
 
-                # create sale
+                # Create sale record
                 sale = Sale.objects.create(
                     payment_mode=payment_mode,
                     amount_received=amount_received,
@@ -298,7 +419,7 @@ def cashier(request):
                     sale_date=timezone.now()
                 )
 
-                # create sale items and deduct stock
+                # Create sale items and deduct stock
                 for item in cart_items:
                     SaleItem.objects.create(
                         sale=sale,
@@ -306,18 +427,19 @@ def cashier(request):
                         quantity=item['quantity'],
                         price=item['price']
                     )
-                    # deduct stock (optional here or handled in SaleItem.save)
                     prod = Products.objects.get(id=item['id'])
-                    prod.quantity = prod.quantity - item['quantity']
+                    prod.quantity -= item['quantity']
                     prod.save()
 
-                # update totals & clear cart
                 sale.update_totals()
                 sale.refresh_from_db()
+
+                # ✅ Clear cart and show success message BEFORE generating receipt
                 request.session['cart'] = {}
                 request.session.modified = True
+                messages.success(request, f"Transaction completed! Receipt #{sale.id} generated.")
 
-                # return PDF receipt for download
+                # ✅ Return the PDF receipt
                 return generate_receipt_pdf(request, sale.id)
 
         except Exception as e:
@@ -332,7 +454,6 @@ def cashier(request):
         'query': query,
     }
     return render(request, 'users/cashier.html', context)
-
 
 # -------------------------------
 # CART HELPERS
@@ -374,52 +495,47 @@ def generate_receipt_pdf(request, sale_id):
     p = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
+    # Use Unicode font (for ₱)
+    p.setFont("DejaVuSans", 10)
+
     left_margin = 15 * mm
     right_margin = width - 15 * mm
     y = height - 20 * mm
 
     # Header
-    p.setFont("Helvetica-Bold", 14)
+    p.setFont("DejaVuSans", 14)
     p.drawString(left_margin, y, "GPU Market")
-    p.setFont("Helvetica", 9)
+    p.setFont("DejaVuSans", 9)
     y -= 6 * mm
     p.drawString(left_margin, y, "Receipt")
     y -= 8 * mm
 
-    # Meta
-    p.setFont("Helvetica", 9)
+    # Meta info
     cashier_name = request.session.get('user_name', 'Unknown')
     p.drawString(left_margin, y, f"Cashier: {cashier_name}")
     p.drawRightString(right_margin, y, f"Sale ID: {sale.id}")
     y -= 5 * mm
+
     sale_dt = sale.sale_date if sale.sale_date else timezone.now()
     p.drawString(left_margin, y, f"Date: {sale_dt.strftime('%Y-%m-%d %H:%M:%S')}")
     y -= 8 * mm
 
     # Table header
-    p.setFont("Helvetica-Bold", 9)
+    p.setFont("DejaVuSans", 9)
     p.drawString(left_margin, y, "Item")
     p.drawRightString(left_margin + 70*mm, y, "Qty")
     p.drawRightString(left_margin + 95*mm, y, "Price")
     p.drawRightString(right_margin, y, "Subtotal")
     y -= 5 * mm
-    p.setLineWidth(0.3)
     p.line(left_margin, y, right_margin, y)
     y -= 4 * mm
 
     # Items
-    p.setFont("Helvetica", 9)
     for si in items:
-        try:
-            product = si.product
-            name = f"{product.brand} {product.model}"
-        except Exception:
-            prod = Products.objects.filter(id=si.product_id).first()
-            name = f"{prod.brand} {prod.model}" if prod else f"Product {si.product_id}"
-
-        max_name_chars = 30
-        if len(name) > max_name_chars:
-            name = name[:max_name_chars-3] + "..."
+        product = si.product
+        name = f"{product.brand} {product.model}"
+        if len(name) > 30:
+            name = name[:27] + "..."
 
         qty = int(si.quantity)
         price = si.price
@@ -433,20 +549,20 @@ def generate_receipt_pdf(request, sale_id):
 
         if y < 30*mm:
             p.showPage()
+            p.setFont("DejaVuSans", 9)
             y = height - 20*mm
-            p.setFont("Helvetica", 9)
 
+    # Totals
     y -= 4 * mm
     p.line(left_margin, y, right_margin, y)
     y -= 6 * mm
 
-    # Totals
-    p.setFont("Helvetica-Bold", 10)
+    p.setFont("DejaVuSans", 10)
     p.drawRightString(right_margin - 40*mm, y, "Total:")
     p.drawRightString(right_margin, y, f"₱{sale.total_price:.2f}")
     y -= 6 * mm
 
-    p.setFont("Helvetica", 9)
+    p.setFont("DejaVuSans", 9)
     p.drawRightString(right_margin - 40*mm, y, "Amount Received:")
     p.drawRightString(right_margin, y, f"₱{sale.amount_received:.2f}")
     y -= 5 * mm
@@ -455,9 +571,8 @@ def generate_receipt_pdf(request, sale_id):
     p.drawRightString(right_margin, y, f"₱{sale.change:.2f}")
     y -= 10 * mm
 
-    p.setFont("Helvetica-Oblique", 9)
+    p.setFont("DejaVuSans", 9)
     p.drawCentredString((left_margin + right_margin)/2, y, "Thank you for shopping at GPU Market!")
-    y -= 8 * mm
 
     p.showPage()
     p.save()
@@ -465,16 +580,13 @@ def generate_receipt_pdf(request, sale_id):
     buffer.seek(0)
     filename = f"receipt_{sale.id}.pdf"
     response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename=\"{filename}\"'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
 
 # -------------------------------
 # REPORTS / SALES
 # -------------------------------
-def dashboard(request):
-    return render(request, 'users/dashboard.html')
-
 
 def total_sales_view(request):
     sales = Sale.objects.all().order_by('-sale_date')
@@ -506,3 +618,25 @@ def stock_sold_view(request):
         'total_brands_sold': total_brands_sold,
     }
     return render(request, 'users/stocksold.html', context)
+
+def set_quantity(request, product_id):
+    if request.method == 'POST':
+        cart = request.session.get('cart', {})
+        quantity = int(request.POST.get('quantity', 1))
+        if quantity > 0:
+            cart[str(product_id)] = quantity
+        else:
+            cart.pop(str(product_id), None)  # remove if quantity is 0
+        request.session['cart'] = cart
+        request.session.modified = True
+        messages.success(request, "Cart updated successfully.")
+    return redirect('cashier')
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FONT_PATH = os.path.join(BASE_DIR, "user", "static", "fonts", "DejaVuSans.ttf")
+
+# Register the font
+if os.path.exists(FONT_PATH):
+    pdfmetrics.registerFont(TTFont("DejaVuSans", FONT_PATH))
+else:
+    print("FONT NOT FOUND:", FONT_PATH)

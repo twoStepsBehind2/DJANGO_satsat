@@ -63,6 +63,8 @@
                   <th>Price (₱)</th>
                   <th>Subtotal (₱)</th>
                   <th>Date Sold</th>
+                  
+
                 </tr>
               </thead>
               <tbody>
@@ -74,6 +76,8 @@
                   <td>₱{{ item.price|floatformat:2|intcomma }}</td>
                   <td>₱{{ item.subtotal|floatformat:2|intcomma }}</td>
                   <td>{{ item.sale.sale_date|date:"M d, Y h:i A" }}</td>
+                 
+
                 </tr>
                 {% empty %}
                 <tr>
