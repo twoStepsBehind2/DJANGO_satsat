@@ -1,6 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.contrib.auth.hashers import make_password
 from django.contrib.auth import logout as django_logout
 from .models import RegisAcc, Products
 from django.db.models import Sum
@@ -152,12 +151,12 @@ def signup(request):
             messages.error(request, "Username already exists. Choose another.")
             return redirect('signup')
 
-        hashed_password = make_password(password)
+        
 
         new_user = RegisAcc(
             name=name,
             username=username,
-            password=hashed_password,
+            password=password,
             position=position,
             user_image=user_image if user_image else 'profile/image.png'
         )
@@ -252,6 +251,92 @@ def product_stock(request):
     return render(request, 'users/product_stock.html', context)
 
 def cashier(request):
+    cart = request.session.get('cart', {})
+
+    # 🔍 Search Feature (Brand + Model)
+    query = request.GET.get('q', '')
+    products_list = Products.objects.filter(status='Available')
+    if query:
+        products_list = products_list.filter(
+            brand__icontains=query
+        ) | Products.objects.filter(
+            status='Available',
+            model__icontains=query
+        )
+
+    cart_items = []
+    total_price = Decimal('0.00')
+    total_items = 0
+
+    products_in_cart = Products.objects.filter(id__in=cart.keys())
+    for product in products_in_cart:
+        qty = cart[str(product.id)]
+        subtotal = Decimal(qty) * product.price
+        total_price += subtotal
+        total_items += qty
+        cart_items.append({
+            'id': product.id,
+            'brand': product.brand,
+            'model': product.model,
+            'quantity': qty,
+            'price': product.price,
+            'subtotal': subtotal,
+        })
+
+    if request.method == 'POST':
+        payment_mode = request.POST.get('payment_mode')
+        amount_received = Decimal(request.POST.get('amount_received', '0'))
+
+        if amount_received < total_price:
+            messages.error(request, "Insufficient payment. Transaction canceled.")
+            return redirect('cashier')
+
+        try:
+            with transaction.atomic():
+                for item in cart_items:
+                    product = Products.objects.select_for_update().get(id=item['id'])
+                    if product.quantity < item['quantity']:
+                        messages.error(request, f"Insufficient stock for {product.brand} {product.model}.")
+                        return redirect('cashier')
+
+                sale = Sale.objects.create(
+                    payment_mode=payment_mode,
+                    amount_received=amount_received,
+                    total_price=total_price,
+                    change=amount_received - total_price,
+                    sale_date=timezone.now()
+                )
+
+                for item in cart_items:
+                    SaleItem.objects.create(
+                        sale=sale,
+                        product_id=item['id'],
+                        quantity=item['quantity'],
+                        price=item['price']
+                    )
+
+                sale.update_totals()
+                request.session['cart'] = {}
+
+                messages.success(
+                    request, 
+                    f"Sale #{sale.id} completed successfully! Change: ₱{sale.change:.2f}"
+                )
+
+        except Exception as e:
+            messages.error(request, f"Transaction failed: {str(e)}")
+
+        return redirect('cashier')
+
+    context = {
+        'products': products_list,
+        'cart_items': cart_items,
+        'total_price': total_price,
+        'total_items': total_items,
+        'query': query,  # Keep search keyword in input
+    }
+    return render(request, 'users/cashier.html', context)       
+
     cart = request.session.get('cart', {})
     products = Products.objects.filter(id__in=cart.keys())
 
@@ -415,3 +500,19 @@ def stock_sold_view(request):
         'total_brands_sold': total_brands_sold,
     }
     return render(request, 'users/stocksold.html', context)
+
+def set_quantity(request, product_id):
+    if request.method == 'POST':
+        quantity = int(request.POST.get('quantity', 1))
+        cart = request.session.get('cart', {})
+
+        # Update cart quantity
+        cart[str(product_id)] = quantity
+        request.session['cart'] = cart
+
+        # ✅ Force session save
+        request.session.modified = True
+
+        messages.success(request, "Quantity updated!")
+
+    return redirect('cashier')  # Recalculate totals in cashier view

@@ -56,10 +56,33 @@
                   <input type="text" name="username" class="form-control" placeholder="Username" aria-label="Username" required>
                 </div>
 
-                <div class="mb-3">
-                  <input type="password" name="password" class="form-control" placeholder="Password" aria-label="Password" required>
-                  <small class="form-text text-muted">Minimum 6 characters.</small>
-                </div>
+                    <!-- ✅ Password Input -->
+            <div class="mb-3">
+              <input 
+                type="password" 
+                id="password" 
+                name="password" 
+                class="form-control" 
+                placeholder="Password" 
+                aria-label="Password" 
+                required
+              >
+            </div>
+
+            <!-- ✅ Show Password Switch -->
+            <div class="form-check form-switch">
+              <input 
+                class="form-check-input" 
+                type="checkbox" 
+                id="showPasswordSwitch"
+              >
+              <label class="form-check-label" for="showPasswordSwitch">
+                Show Password
+              </label>
+            </div>
+
+
+
 
                 <div class="mb-3">
                   <label class="form-label">Position</label>
@@ -89,8 +112,29 @@
       </div>
     </div>
   </main>
+  
 
   {% include "partials/footer.html" %}
   {% include "partials/scripts.html" %}
 </body>
 </html>
+
+<style>
+  #togglePassword {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+  #togglePassword:focus {
+    box-shadow: none;
+    outline: none;
+  }
+
+  #togglePassword:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+</style>

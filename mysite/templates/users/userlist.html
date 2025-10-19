@@ -36,7 +36,7 @@
           <div class="ms-md-auto pe-md-3 d-flex align-items-center">
             <div class="input-group">
               <span class="input-group-text text-body"><i class="fas fa-search" aria-hidden="true"></i></span>
-              <input type="text" class="form-control" placeholder="Type here...">
+              <input type="text" id="userSearch" class="form-control" placeholder="Search user...">
             </div>
           </div>
           <ul class="navbar-nav  justify-content-end">
@@ -414,6 +414,23 @@
   <script async defer src="https://buttons.github.io/buttons.js"></script>
   <!-- Control Center for Soft Dashboard: parallax effects, scripts for the example pages etc -->
   <script src="{% static 'js/argon-dashboard.min.js?v=2.1.0' %}"></script>
+  <script>
+  const userSearch = document.getElementById('userSearch');
+  const userRows = document.querySelectorAll('tbody tr');
+
+  if (userSearch) {
+    userSearch.addEventListener('keyup', function () {
+      const query = this.value.toLowerCase().trim();
+
+      userRows.forEach(row => {
+        const cells = Array.from(row.cells).map(cell => cell.textContent.toLowerCase());
+        const match = cells.some(text => text.includes(query));
+        row.style.display = match ? '' : 'none';
+      });
+    });
+  }
+</script>
+
 </body>
 
 </html>

@@ -34,6 +34,8 @@ urlpatterns = [
 
     # Total stocksold
     path('stocksold/', views.stock_sold_view, name='stocksold'),
+    path('set-quantity/<int:product_id>/', views.set_quantity, name='set_quantity'),
+
 
 
 ]

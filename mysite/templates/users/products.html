@@ -24,7 +24,7 @@
           <div class="ms-md-auto pe-md-3 d-flex align-items-center">
             <div class="input-group">
               <span class="input-group-text text-body"><i class="fas fa-search" aria-hidden="true"></i></span>
-              <input type="text" class="form-control" placeholder="Search product...">
+              <input type="text" id="productSearch" class="form-control" placeholder="Search product...">
             </div>
           </div>
           <ul class="navbar-nav justify-content-end">
@@ -244,5 +244,24 @@
   <script src="{% static 'js/plugins/perfect-scrollbar.min.js' %}"></script>
   <script src="{% static 'js/plugins/smooth-scrollbar.min.js' %}"></script>
   <script src="{% static 'js/argon-dashboard.min.js?v=2.1.0' %}"></script>
+  <script>
+  // Product search functionality
+  const searchInput = document.getElementById('productSearch');
+  const productRows = document.querySelectorAll('tbody tr');
+
+  if (searchInput) {
+    searchInput.addEventListener('keyup', function () {
+      const query = this.value.toLowerCase().trim();
+
+      productRows.forEach(row => {
+        const cells = Array.from(row.cells).map(cell => cell.textContent.toLowerCase());
+        const match = cells.some(text => text.includes(query));
+        row.style.display = match ? '' : 'none';
+      });
+    });
+  }
+</script>
+
+
 </body>
 </html>
