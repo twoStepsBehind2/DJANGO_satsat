@@ -152,6 +152,7 @@ STATICFILES_DIRS = [
 ]
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DATABASE_URL = os.getenv('DATABASE_URL')
 if DATABASE_URL:
